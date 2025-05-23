@@ -1,0 +1,8 @@
+[workspace]
+members=[
+	"paytube-client",
+	"core"
+]
+
+[profile.release]
+debug=true
