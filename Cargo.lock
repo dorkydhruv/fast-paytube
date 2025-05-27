@@ -65,6 +65,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "fast-init"
+version = "0.1.0"
+
+[[package]]
 name = "gimli"
 version = "0.31.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -143,10 +147,6 @@ dependencies = [
  "smallvec",
  "windows-targets",
 ]
-
-[[package]]
-name = "paytube-client"
-version = "0.1.0"
 
 [[package]]
 name = "pin-project-lite"

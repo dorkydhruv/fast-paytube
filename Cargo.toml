@@ -1,6 +1,6 @@
 [workspace]
 members=[
-	"paytube-client",
+	"fast-init",
 	"core"
 ]
 
