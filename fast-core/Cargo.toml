@@ -1,0 +1,19 @@
+[package]
+name = "fast-core"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+base64 = "0.22.1"
+bcs = "0.1.6"
+bincode = "1.3.1"
+failure = "0.1.8"
+futures = "0.3.31"
+rand = "0.9.1"
+serde = { version = "1.0.219", features = ["derive"] }
+tokio = { version = "1.45.1", features = ["full"] }
+ed25519 = "2.2.3"
+ed25519-dalek = { version = "2.1.1", features = ["batch", "serde"] }
+serde-name = "0.2.1"
+structopt = "0.3.26"
+sha2 = "0.10.9"

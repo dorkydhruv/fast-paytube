@@ -1,8 +1,5 @@
 [workspace]
 members=[
 	"fast-init",
-	"core"
+	"fast-core"
 ]
-
-[profile.release]
-debug=true
