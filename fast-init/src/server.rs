@@ -126,13 +126,16 @@ async fn run_shard_server(
     server.run(move |data| {
         let authority = authority.clone();
 
-        // Try to deserialize the message
         match deserialize_message(data) {
             Ok(BridgeMessage::CrossChainTransferOrder(order)) => {
                 // Handle transfer order
                 let mut state = authority.lock().unwrap();
                 match state.handle_cross_chain_transfer_order(order, shard_id) {
-                    Ok(signed_order) => Some(serialize_signed_order(&signed_order)),
+                    Ok(signed_order) => {
+                        // logs for debug
+                        info!("Received signed order from authority: {:?}", signed_order.authority);
+                        Some(serialize_signed_order(&signed_order))
+                    }
                     Err(e) => Some(serialize_error(&e)),
                 }
             }
@@ -140,7 +143,10 @@ async fn run_shard_server(
                 // Handle cross-shard update
                 let mut state = authority.lock().unwrap();
                 match state.handle_cross_shard_update(update) {
-                    Ok(_) => None, // No response needed
+                    Ok(_) => {
+                        info!("Handled cross-shard update for shard {}", shard_id);
+                        None
+                    } // No response needed
                     Err(e) => Some(serialize_error(&e)),
                 }
             }

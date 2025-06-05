@@ -272,9 +272,15 @@ impl Relayer {
             let mut signed_orders = Vec::new();
             // Send to all authorities for this shard
             for client in clients {
+                info!("Sending transfer order to authority");
                 match client.send_transfer_order(&order).await {
                     Ok(signed_order) => {
+                        info!(
+                            "Received signed order from authority: {:?} from relayer",
+                            signed_order.authority
+                        );
                         signed_orders.push(signed_order);
+                        info!("Signed order added, current count: {}", signed_orders.len());
                     }
                     Err(e) => {
                         // Log error but continue with other authorities
@@ -282,6 +288,7 @@ impl Relayer {
                     }
                 }
             }
+            info!("Received {} signed orders from shard {}", signed_orders.len(), shard_id);
             for signed_order in signed_orders {
                 self.handle_signed_order(signed_order).await?;
             }
