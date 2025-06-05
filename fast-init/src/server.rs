@@ -1,4 +1,11 @@
-use fast_core::{ base_types::*, authority::*, message::*, committee::Committee, error::*, serialization::*};
+use fast_core::{
+    base_types::*,
+    authority::*,
+    message::*,
+    committee::Committee,
+    error::*,
+    serialization::*,
+};
 use failure::Error;
 use log::{ error, info };
 use serde::{ Deserialize, Serialize };
@@ -56,13 +63,11 @@ impl EscrowVerifier for DummyEscrowVerifier {
 pub async fn run_bridge_server(opt: BridgeServerOpt) -> Result<(), Error> {
     // Load authority configuration
     let config = load_authority_config(&opt.config)?;
-
     // Load committee configuration
     let committee = load_committee(&config.committee)?;
 
     // Load authority secret key
     let secret = load_secret_key(&config.secret_key)?;
-
     // Create authority name from public key
     let name = decode_authority_name(&config.name)?.into();
 
@@ -104,7 +109,7 @@ pub async fn run_bridge_server(opt: BridgeServerOpt) -> Result<(), Error> {
     let _shard_results = futures::future::join_all(server_tasks).await;
     // Await on cross-shard updates
     cross_shard_task.await?;
-    
+
     Ok(())
 }
 
@@ -210,14 +215,20 @@ fn load_committee(path: &str) -> Result<Committee, Error> {
     Ok(Committee::new(voting_rights))
 }
 
-/// Load secret key from file
-fn load_secret_key(path: &str) -> Result<KeyPair, Error> {
-    let file = File::open(path)?;
-    let reader = BufReader::new(file);
-    let secret_key: String = serde_json::from_reader(reader)?;
+/// Load secret key from string or file
+fn load_secret_key(key_or_path: &str) -> Result<KeyPair, Error> {
+    let secret_key_str = if key_or_path.contains('/') && std::path::Path::new(key_or_path).exists() {
+        // This looks like a file path, try to read from file
+        let file = File::open(key_or_path)?;
+        let reader = BufReader::new(file);
+        serde_json::from_reader(reader)?
+    } else {
+        // This looks like a direct secret key string
+        key_or_path.to_string()
+    };
 
     // Parse secret key
-    let bytes = hex::decode(secret_key.trim())?;
+    let bytes = hex::decode(secret_key_str.trim())?;
     if bytes.len() != 32 {
         return Err(failure::format_err!("Invalid secret key length"));
     }

@@ -1,5 +1,5 @@
 use failure::Fail;
-use serde::{Deserialize, Serialize};
+use serde::{ Deserialize, Serialize };
 
 use crate::base_types::CrossChainTransfer;
 
@@ -23,8 +23,9 @@ macro_rules! fp_ensure {
 /// Custom error type for FastPay.
 pub enum FastPayError {
     // Signature verification
-    #[fail(display = "Signature is not valid: {}", error)]
-    InvalidSignature { error: String },
+    #[fail(display = "Signature is not valid: {}", error)] InvalidSignature {
+        error: String,
+    },
     #[fail(display = "Value was not signed by a known authority")]
     UnknownSigner,
     // Certificate verification
@@ -36,8 +37,9 @@ pub enum FastPayError {
     #[fail(
         display = "Cannot initiate transfer while a transfer order is still pending confirmation: {:?}",
         pending_confirmation
-    )]
-    PreviousTransferMustBeConfirmedFirst { pending_confirmation: CrossChainTransfer },
+    )] PreviousTransferMustBeConfirmedFirst {
+        pending_confirmation: CrossChainTransfer,
+    },
     #[fail(display = "Transfer order was processed but no signature was produced by authority")]
     ErrorWhileProcessingTransferOrder,
     #[fail(
@@ -49,8 +51,9 @@ pub enum FastPayError {
     // Synchronization validation
     #[fail(display = "Transaction index must increase by one")]
     UnexpectedTransactionIndex,
-    #[fail(display = "Configuration error: {}", error)]
-    ConfigurationError { error: String },
+    #[fail(display = "Configuration error: {}", error)] ConfigurationError {
+        error: String,
+    },
     // Account access
     #[fail(display = "No certificate for this account and sequence number")]
     CertificateNotfound,
@@ -64,20 +67,28 @@ pub enum FastPayError {
     SequenceOverflow,
     #[fail(display = "Sequence number underflow.")]
     SequenceUnderflow,
-    #[fail(display="Invalid transfer amount: {}.", error)]
-    InvalidTransferAmount { error: String },
-    #[fail(display = "Wrong shard used.")]
-    WrongShard,
+    #[fail(display = "Invalid transfer amount: {}.", error)] InvalidTransferAmount {
+        error: String,
+    },
+    #[fail(display = "Wrong shard used. {}", err)]
+    WrongShard{err: String},
     #[fail(display = "Invalid cross shard update.")]
     InvalidCrossShardUpdate,
     #[fail(display = "Cannot deserialize.")]
     InvalidDecoding,
     #[fail(display = "Unexpected message.")]
     UnexpectedMessage,
-    #[fail(display = "Network error while querying service: {:?}.", error)]
-    ClientIoError { error: String },
+    #[fail(display = "Network error while querying service: {:?}.", error)] ClientIoError {
+        error: String,
+    },
     #[fail(display = "Deserialization error occurred")]
     DeserializationError,
     #[fail(display = "Communication error with authority")]
     CommunicationError,
+    #[fail(
+        display = "Can't find mutable shard state for shard ID: {}.",
+        shard_id
+    )] ShardStateNotFound {
+        shard_id: u32,
+    },
 }

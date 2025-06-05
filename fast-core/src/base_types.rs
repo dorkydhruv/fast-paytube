@@ -1,5 +1,5 @@
 use serde::{ Deserialize, Serialize };
-use sha2::{Digest, Sha512};
+use sha2::{ Digest, Sha512 };
 use std::hash::{ Hash };
 use ed25519_dalek as dalek;
 use ed25519_dalek::{ Signer, Verifier };
@@ -40,7 +40,6 @@ pub type ShardId = u32;
 pub type AuthorityName = Pubkey;
 pub struct KeyPair(dalek::SigningKey);
 
-
 impl KeyPair {
     pub fn from(secret: [u8; 32]) -> Self {
         let signing_key = dalek::SigningKey::from_bytes(&secret);
@@ -71,7 +70,6 @@ impl CrossChainTransfer {
         (self.sender, self.interop_tx_id)
     }
 
-    
     /// Determine which shard should process this transfer
     pub fn shard_id(&self) -> ShardId {
         // Shard based on the first byte of sender address, like in FastPay
@@ -113,8 +111,6 @@ impl InteropTxId {
     }
 }
 
-
-
 /// Something that we know how to hash and sign.
 pub trait Signable<Hasher> {
     fn write(&self, hasher: &mut Hasher);
@@ -125,11 +121,7 @@ pub trait Signable<Hasher> {
 /// * We use `BCS` to generate canonical bytes suitable for hashing and signing.
 pub trait BcsSignable: Serialize + serde::de::DeserializeOwned {}
 
-impl<T, Hasher> Signable<Hasher> for T
-where
-    T: BcsSignable,
-    Hasher: std::io::Write,
-{
+impl<T, Hasher> Signable<Hasher> for T where T: BcsSignable, Hasher: std::io::Write {
     fn write(&self, hasher: &mut Hasher) {
         let name = serde_name::trace_name::<Self>().expect("Self must be a struct or an enum");
         // Note: This assumes that names never contain the separator `::`.
@@ -139,23 +131,15 @@ where
 }
 
 impl Signature {
-    pub fn new<T>(value: &T, secret: &KeyPair) -> Self
-    where
-        T: Signable<Vec<u8>>,
-    {
+    pub fn new<T>(value: &T, secret: &KeyPair) -> Self where T: Signable<Vec<u8>> {
         let mut message = Vec::new();
         value.write(&mut message);
         let signature = secret.0.sign(&message);
         Signature(signature)
     }
 
-    fn check_internal<T>(
-        &self,
-        value: &T,
-        author: Pubkey,
-    ) -> Result<(), dalek::SignatureError>
-    where
-        T: Signable<Vec<u8>>,
+    fn check_internal<T>(&self, value: &T, author: Pubkey) -> Result<(), dalek::SignatureError>
+        where T: Signable<Vec<u8>>
     {
         let mut message = Vec::new();
         value.write(&mut message);
@@ -164,19 +148,15 @@ impl Signature {
     }
 
     pub fn check<T>(&self, value: &T, author: Pubkey) -> Result<(), FastPayError>
-    where
-        T: Signable<Vec<u8>>,
+        where T: Signable<Vec<u8>>
     {
-        self.check_internal(value, author)
-            .map_err(|error| FastPayError::InvalidSignature {
-                error: format!("{}", error),
-            })
+        self.check_internal(value, author).map_err(|error| FastPayError::InvalidSignature {
+            error: format!("{} --- from check signature", error),
+        })
     }
 
     fn verify_batch_internal<'a, T, I>(value: &'a T, votes: I) -> Result<(), dalek::SignatureError>
-    where
-        T: Signable<Vec<u8>>,
-        I: IntoIterator<Item = &'a (Pubkey, Signature)>,
+        where T: Signable<Vec<u8>>, I: IntoIterator<Item = &'a (Pubkey, Signature)>
     {
         let mut msg = Vec::new();
         value.write(&mut msg);
@@ -192,13 +172,11 @@ impl Signature {
     }
 
     pub fn verify_batch<'a, T, I>(value: &'a T, votes: I) -> Result<(), FastPayError>
-    where
-        T: Signable<Vec<u8>>,
-        I: IntoIterator<Item = &'a (Pubkey, Signature)>,
+        where T: Signable<Vec<u8>>, I: IntoIterator<Item = &'a (Pubkey, Signature)>
     {
         Signature::verify_batch_internal(value, votes).map_err(|error| {
             FastPayError::InvalidSignature {
-                error: format!("{}", error),
+                error: format!("{} --- from verify signature", error),
             }
         })
     }

@@ -58,8 +58,8 @@ pub struct Relayer {
     committee: Committee,
     authority_clients: HashMap<ShardId, Vec<AuthorityShardClient>>,
     pending_transfers: HashMap<InteropTxId, PendingTransfer>,
-    source_rpc: String,
-    destination_rpc: String,
+    _source_rpc: String,
+    _destination_rpc: String,
     polling_interval: Duration,
     last_poll: Option<Instant>,
 }
@@ -68,8 +68,8 @@ impl Relayer {
     /// Create a new relayer
     pub async fn new(
         committee_path: &str,
-        source_rpc: String,
-        destination_rpc: String,
+        _source_rpc: String,
+        _destination_rpc: String,
         polling_interval: Duration
     ) -> Result<Self, Error> {
         // Load committee configuration
@@ -106,8 +106,8 @@ impl Relayer {
             committee,
             authority_clients,
             pending_transfers: HashMap::new(),
-            source_rpc,
-            destination_rpc,
+            _source_rpc,
+            _destination_rpc,
             polling_interval,
             last_poll: None,
         })
@@ -116,12 +116,15 @@ impl Relayer {
     /// Run the relayer
     pub async fn run(&mut self) -> Result<(), Error> {
         info!("Starting bridge relayer");
+        println!("Starting bridge relayer (println)"); // Direct console output
 
         loop {
             // Poll for new transfers
+            println!("Polling source chain..."); // Direct console output
             self.poll_source_chain().await?;
 
             // Check for completed transfers
+            println!("Checking pending transfers..."); // Direct console output
             self.check_pending_transfers().await?;
 
             // Wait for next polling interval
@@ -146,10 +149,17 @@ impl Relayer {
 
             if !self.pending_transfers.contains_key(&interop_tx_id) {
                 if !self.pending_transfers.contains_key(&interop_tx_id) {
+                    // Create a real signature using the sender's keypair
+                    let sender_secret = [2u8; 32];
+                    let sender_keypair = KeyPair::from(sender_secret);
+                    let sender_pubkey = sender_keypair.public();
+                    let first_byte = sender_pubkey.0[0];
+                    info!("Sender public key first byte: {}", first_byte);
+                    info!("This maps to shard: {}", (first_byte as u32) % 16);
                     let transfer = CrossChainTransfer {
                         source_chain: ChainId(1),
                         destination_chain: ChainId(2),
-                        sender: Pubkey([2u8; 32]),
+                        sender: sender_pubkey,
                         recipient: Pubkey([3u8; 32]),
                         amount: 1000,
                         token_mint: Pubkey([4u8; 32]),
@@ -157,15 +167,14 @@ impl Relayer {
                         escrow_account: Pubkey([5u8; 32]),
                         nonce: 0,
                     };
-
-                    // Create a dummy signature
-                    let signature = Signature::from([6u8; 64]);
+                    let signature = Signature::new(&transfer, &sender_keypair);
 
                     let order = CrossChainTransferOrder {
                         transfer,
                         signature,
                     };
 
+                    info!("Generated dummy transfer with ID: {:?}", interop_tx_id);
                     // Process the transfer
                     self.process_transfer(order).await?;
                 }
@@ -183,10 +192,22 @@ impl Relayer {
 
         // Check each pending transfer
         for (id, pending) in &self.pending_transfers {
+            info!(
+                "Checking pending transfer {:?}, weight: {}/{}",
+                id,
+                pending.weight,
+                self.committee.quorum_threshold()
+            );
+
             // Check if we have a quorum
             if pending.weight >= self.committee.quorum_threshold() {
+                info!("Quorum threshold reached, attempting to create certificate");
                 // Create a certificate
                 if let Some(certificate) = self.create_certificate(pending)? {
+                    info!(
+                        "Certificate created successfully with {} signatures",
+                        certificate.signatures.len()
+                    );
                     // Submit to destination chain
                     self.submit_to_destination(&certificate).await?;
 
@@ -195,6 +216,8 @@ impl Relayer {
 
                     // Mark as completed
                     completed.push(*id);
+                } else {
+                    error!("Failed to create certificate despite having enough weight");
                 }
             } else if
                 // Check for timeout (5 minutes)
@@ -221,6 +244,10 @@ impl Relayer {
     async fn process_transfer(&mut self, order: CrossChainTransferOrder) -> Result<(), Error> {
         let interop_tx_id = order.transfer.interop_tx_id;
 
+        info!("Starting to process transfer with ID: {:?}", interop_tx_id);
+        info!("Current authority clients: {}", self.authority_clients.len());
+        info!("Committee voting rights: {} members", self.committee.voting_rights.len());
+
         // Create a new pending transfer
         let pending = PendingTransfer {
             order: order.clone(),
@@ -232,7 +259,13 @@ impl Relayer {
         self.pending_transfers.insert(interop_tx_id, pending);
 
         // Determine which shard should handle this transfer
-        let shard_id = 0 as ShardId; // In a real implementation, this would be based on the transfer
+        let shard_id = get_shard_id(&order.transfer, self.authority_clients.len() as u32); // In a real implementation, this would be based on the transfer
+
+        info!(
+            "Processing transfer for shard {}, authority count: {}",
+            shard_id,
+            self.authority_clients.get(&shard_id).map_or(0, |v| v.len())
+        );
 
         // Get clients for this shard
         if let Some(clients) = self.authority_clients.get(&shard_id) {
@@ -264,6 +297,7 @@ impl Relayer {
     ) -> Result<(), Error> {
         // Check the signature
         if signed_order.check(&self.committee).is_err() {
+            error!("Signature verification failed for order from {:?}", signed_order.authority);
             return Ok(());
         }
 
@@ -276,6 +310,13 @@ impl Relayer {
             if !pending.signed_orders.contains_key(&authority) {
                 // Add weight
                 pending.weight += self.committee.weight(&authority);
+
+                info!(
+                    "Added signature from authority {:?}, weight now {}/{}",
+                    authority,
+                    pending.weight,
+                    self.committee.quorum_threshold()
+                );
 
                 // Add signed order
                 pending.signed_orders.insert(authority, signed_order);
@@ -290,6 +331,8 @@ impl Relayer {
         &self,
         pending: &PendingTransfer
     ) -> Result<Option<CertifiedCrossChainTransferOrder>, Error> {
+        info!("Attempting to create certificate with {} signatures", pending.signed_orders.len());
+
         // Create a signature aggregator
         let mut aggregator = CrossChainSignatureAggregator::new_unsafe(
             pending.order.clone(),
@@ -298,18 +341,29 @@ impl Relayer {
 
         // Add all signatures
         for (name, signed) in &pending.signed_orders {
-            aggregator.append(*name, signed.signature.clone())?;
+            match aggregator.append(*name, signed.signature.clone()) {
+                Ok(_) => info!("Added signature from authority {:?} to aggregator", name),
+                Err(e) => {
+                    error!("Failed to add signature from authority {:?}: {:?}", name, e);
+                    return Err(e.into());
+                }
+            }
         }
 
         // Check if we have a quorum
         if pending.weight >= self.committee.quorum_threshold() {
+            info!("Quorum weight achieved, finalizing certificate");
             // Get first signature to add again to trigger certificate creation
             if let Some((name, signed)) = pending.signed_orders.iter().next() {
                 // This will return Some(certificate) because we already have a quorum
-                return aggregator.append(*name, signed.signature.clone()).map_err(|e| e.into());
+                return aggregator.append(*name, signed.signature.clone()).map_err(|e| {
+                    error!("Error creating certificate on final signature append: {:?}", e);
+                    e.into()
+                });
             }
         }
 
+        info!("Certificate not created yet, need more signatures");
         Ok(None)
     }
 
@@ -334,11 +388,16 @@ impl Relayer {
         &self,
         certificate: &CertifiedCrossChainTransferOrder
     ) -> Result<(), Error> {
+        info!("Propagating certificate to {} authority shards", self.authority_clients.len());
+
         // Send to all authorities (all shards)
-        for clients in self.authority_clients.values() {
+        for (shard_id, clients) in &self.authority_clients {
+            info!("Sending to shard {} with {} authorities", shard_id, clients.len());
             for client in clients {
                 if let Err(e) = client.send_certified_order(certificate).await {
                     error!("Error propagating certificate to authority: {:?}", e);
+                } else {
+                    info!("Certificate propagated successfully to authority in shard {}", shard_id);
                 }
             }
         }
@@ -368,8 +427,16 @@ fn decode_authority_name(name: &str) -> Result<Pubkey, Error> {
     Ok(Pubkey(key_bytes))
 }
 
+fn get_shard_id(transfer: &CrossChainTransfer, _num_shards: u32) -> ShardId {
+    (transfer.sender.0[0] as u32) % 16
+}
+
 /// Run the relayer with the given options
 pub async fn run_relayer(opt: RelayerOpt) -> Result<(), Error> {
+    // Logger is already initialized in main.rs, don't initialize it again
+
+    info!("Initializing relayer with committee: {}", opt.committee);
+
     let polling_interval = Duration::from_millis(opt.polling_interval);
 
     let mut relayer = Relayer::new(

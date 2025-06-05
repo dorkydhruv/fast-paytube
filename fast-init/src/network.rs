@@ -83,12 +83,12 @@ impl UdpServer {
 pub struct AuthorityShardClient {
     client: UdpClient,
     address: SocketAddr,
-    authority: AuthorityName,
+    _authority: AuthorityName,
 }
 
 impl AuthorityShardClient {
     pub async fn new(
-        authority: AuthorityName,
+        _authority: AuthorityName,
         address: SocketAddr
     ) -> Result<Self, std::io::Error> {
         let client = UdpClient::new().await?;
@@ -96,7 +96,7 @@ impl AuthorityShardClient {
         Ok(Self {
             client,
             address,
-            authority,
+            _authority,
         })
     }
 

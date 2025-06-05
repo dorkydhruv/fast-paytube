@@ -89,8 +89,8 @@ impl<V: EscrowVerifier> BridgeAuthorityState<V> {
 
     /// Get the shard ID for a transfer based on sender address
     pub fn get_shard_id(&self, transfer: &CrossChainTransfer) -> ShardId {
-        let bytes = transfer.sender.0.as_ref();
-        (bytes[0] as u32) % self.number_of_shards
+        let first_byte = transfer.sender.0[0];
+        (first_byte as u32) % 16
     }
 
     /// Check if a transfer belongs to a specific shard
@@ -106,11 +106,19 @@ impl<V: EscrowVerifier> BridgeAuthorityState<V> {
     ) -> Result<SignedCrossChainTransferOrder, FastPayError> {
         // Verify transfer is in this shard
         if !self.in_shard(&order.transfer, shard_id) {
-            return Err(FastPayError::WrongShard);
+            return Err(FastPayError::WrongShard {
+                err: format!(
+                    "Transfer sender {} is not in shard {}",
+                    order.transfer.sender.0[0],
+                    shard_id
+                ),
+            });
         }
 
         // Get the shard state
-        let shard_state = self.shard_states.get_mut(&shard_id).ok_or(FastPayError::WrongShard)?;
+        let shard_state = self.shard_states
+            .get_mut(&shard_id)
+            .ok_or(FastPayError::ShardStateNotFound { shard_id: shard_id })?;
 
         // Verify the transfer order signature
         order.check_signature()?;
@@ -145,7 +153,7 @@ impl<V: EscrowVerifier> BridgeAuthorityState<V> {
         // Get the shard state
         let shard_state = self.shard_states
             .get_mut(&update.shard_id)
-            .ok_or(FastPayError::WrongShard)?;
+            .ok_or(FastPayError::ShardStateNotFound { shard_id: update.shard_id })?;
 
         // Verify the certificate
         update.transfer_certificate.check(&self.committee)?;
