@@ -90,7 +90,7 @@ impl Relayer {
             // Create clients for each shard
             for i in 0..entry.num_shards {
                 let shard_id = i as ShardId;
-                let port = entry.port + (i as u16);
+                let port = entry.port + (shard_id as u16);
                 let addr = format!("{}:{}", entry.host, port);
                 let addr: SocketAddr = addr.parse()?;
 
@@ -346,32 +346,27 @@ impl Relayer {
             &self.committee
         );
 
+        // Track whether we've created a certificate
+        let mut certificate = None;
+
         // Add all signatures
         for (name, signed) in &pending.signed_orders {
             match aggregator.append(*name, signed.signature.clone()) {
-                Ok(_) => info!("Added signature from authority {:?} to aggregator", name),
+                Ok(Some(cert)) => {
+                    info!("Certificate created with signature from {:?}", name);
+                    certificate = Some(cert);
+                    break; // Exit the loop once we have a certificate
+                }
+                Ok(None) => {
+                    info!("Added signature from authority {:?} to aggregator", name);
+                }
                 Err(e) => {
                     error!("Failed to add signature from authority {:?}: {:?}", name, e);
                     return Err(e.into());
                 }
             }
         }
-
-        // Check if we have a quorum
-        if pending.weight >= self.committee.quorum_threshold() {
-            info!("Quorum weight achieved, finalizing certificate");
-            // Get first signature to add again to trigger certificate creation
-            if let Some((name, signed)) = pending.signed_orders.iter().next() {
-                // This will return Some(certificate) because we already have a quorum
-                return aggregator.append(*name, signed.signature.clone()).map_err(|e| {
-                    error!("Error creating certificate on final signature append: {:?}", e);
-                    e.into()
-                });
-            }
-        }
-
-        info!("Certificate not created yet, need more signatures");
-        Ok(None)
+        Ok(certificate)
     }
 
     /// Submit a certificate to the destination chain

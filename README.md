@@ -31,6 +31,7 @@ sequenceDiagram
 
 Usecase:
 
+
 generate-config - 
 
 ```bash

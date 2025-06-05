@@ -28,7 +28,7 @@ pub struct BridgeConfigGenOpt {
     base_port: u16,
 
     /// Port step between authorities
-    #[structopt(long, default_value = "100")]
+    #[structopt(long, default_value = "1000")]
     port_step: u16,
 
     /// Output directory
