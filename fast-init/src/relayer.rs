@@ -1,12 +1,12 @@
-use fast_core::{ base_types::*, message::*, committee::Committee };
 use failure::Error;
-use log::{ error, info };
-use serde::{ Deserialize, Serialize };
-use std::collections::{ BTreeMap, HashMap };
+use fast_core::{base_types::*, committee::Committee, message::*};
+use log::{error, info};
+use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
 use std::io::BufReader;
 use std::net::SocketAddr;
-use std::time::{ Duration, Instant };
+use std::time::{Duration, Instant};
 use structopt::StructOpt;
 use tokio::time::sleep;
 
@@ -70,7 +70,7 @@ impl Relayer {
         committee_path: &str,
         _source_rpc: String,
         _destination_rpc: String,
-        polling_interval: Duration
+        polling_interval: Duration,
     ) -> Result<Self, Error> {
         // Load committee configuration
         let config = load_committee_config(committee_path)?;
@@ -97,7 +97,10 @@ impl Relayer {
                 let client = AuthorityShardClient::new(authority_name, addr).await?;
 
                 // Add to clients map
-                authority_clients.entry(shard_id).or_insert_with(Vec::new).push(client);
+                authority_clients
+                    .entry(shard_id)
+                    .or_insert_with(Vec::new)
+                    .push(client);
             }
         }
 
@@ -116,15 +119,16 @@ impl Relayer {
     /// Run the relayer
     pub async fn run(&mut self) -> Result<(), Error> {
         info!("Starting bridge relayer");
-        println!("Starting bridge relayer (println)"); // Direct console output
 
         loop {
             // Poll for new transfers
-            println!("Polling source chain..."); // Direct console output
+            info!("==============================================================================");
+            info!("Polling source chain...");
             self.poll_source_chain().await?;
 
             // Check for completed transfers
-            println!("Checking pending transfers..."); // Direct console output
+            info!("==============================================================================");
+            info!("Checking pending transfers...");
             self.check_pending_transfers().await?;
 
             // Wait for next polling interval
@@ -138,9 +142,8 @@ impl Relayer {
         // and look for new escrow events
 
         let now = Instant::now();
-        if
-            self.last_poll.is_none() ||
-            now.duration_since(self.last_poll.unwrap()) > Duration::from_secs(10)
+        if self.last_poll.is_none()
+            || now.duration_since(self.last_poll.unwrap()) > Duration::from_secs(10)
         {
             self.last_poll = Some(now);
 
@@ -154,8 +157,11 @@ impl Relayer {
                     let sender_keypair = KeyPair::from(sender_secret);
                     let sender_pubkey = sender_keypair.public();
                     let first_byte = sender_pubkey.0[0];
-                    info!("Sender public key first byte: {}", first_byte);
-                    info!("This maps to shard: {}", (first_byte as u32) % 16);
+                    info!(
+                        "Sender public key: {:?} maps to --> Shard: {}",
+                        sender_keypair.public().base58(),
+                        (first_byte as u32) % 16
+                    );
                     let transfer = CrossChainTransfer {
                         source_chain: ChainId(1),
                         destination_chain: ChainId(2),
@@ -174,7 +180,10 @@ impl Relayer {
                         signature,
                     };
 
-                    info!("Generated dummy transfer with ID: {:?}", interop_tx_id);
+                    info!(
+                        "Generated dummy transfer with ID: {:?}",
+                        interop_tx_id.base58()
+                    );
                     // Process the transfer
                     self.process_transfer(order).await?;
                 }
@@ -194,7 +203,7 @@ impl Relayer {
         for (id, pending) in &self.pending_transfers {
             info!(
                 "Checking pending transfer {:?}, weight: {}/{}",
-                id,
+                id.base58(),
                 pending.weight,
                 self.committee.quorum_threshold()
             );
@@ -220,9 +229,8 @@ impl Relayer {
                     error!("Failed to create certificate despite having enough weight");
                 }
             } else if
-                // Check for timeout (5 minutes)
-                now.duration_since(pending.start_time) > Duration::from_secs(300)
-            {
+            // Check for timeout (5 minutes)
+            now.duration_since(pending.start_time) > Duration::from_secs(300) {
                 timed_out.push(*id);
             }
         }
@@ -244,9 +252,18 @@ impl Relayer {
     async fn process_transfer(&mut self, order: CrossChainTransferOrder) -> Result<(), Error> {
         let interop_tx_id = order.transfer.interop_tx_id;
 
-        info!("Starting to process transfer with ID: {:?}", interop_tx_id);
-        info!("Current authority clients: {}", self.authority_clients.len());
-        info!("Committee voting rights: {} members", self.committee.voting_rights.len());
+        info!(
+            "Starting to process transfer with ID: {:?}",
+            interop_tx_id.base58()
+        );
+        info!(
+            "Current authority clients: {}",
+            self.authority_clients.len()
+        );
+        info!(
+            "Committee voting rights: {} members",
+            self.committee.voting_rights.len()
+        );
 
         // Create a new pending transfer
         let pending = PendingTransfer {
@@ -277,7 +294,7 @@ impl Relayer {
                     Ok(signed_order) => {
                         info!(
                             "Received signed order from authority: {:?} from relayer",
-                            signed_order.authority
+                            signed_order.authority.base58()
                         );
                         signed_orders.push(signed_order);
                         info!("Signed order added, current count: {}", signed_orders.len());
@@ -288,7 +305,11 @@ impl Relayer {
                     }
                 }
             }
-            info!("Received {} signed orders from shard {}", signed_orders.len(), shard_id);
+            info!(
+                "Received {} signed orders from shard {}",
+                signed_orders.len(),
+                shard_id
+            );
             for signed_order in signed_orders {
                 self.handle_signed_order(signed_order).await?;
             }
@@ -300,11 +321,14 @@ impl Relayer {
     /// Handle a signed order from an authority
     async fn handle_signed_order(
         &mut self,
-        signed_order: SignedCrossChainTransferOrder
+        signed_order: SignedCrossChainTransferOrder,
     ) -> Result<(), Error> {
         // Check the signature
         if signed_order.check(&self.committee).is_err() {
-            error!("Signature verification failed for order from {:?}", signed_order.authority);
+            error!(
+                "Signature verification failed for order from {:?}",
+                signed_order.authority
+            );
             return Ok(());
         }
 
@@ -320,7 +344,7 @@ impl Relayer {
 
                 info!(
                     "Added signature from authority {:?}, weight now {}/{}",
-                    authority,
+                    authority.base58(),
                     pending.weight,
                     self.committee.quorum_threshold()
                 );
@@ -336,15 +360,16 @@ impl Relayer {
     /// Create a certificate from a pending transfer
     fn create_certificate(
         &self,
-        pending: &PendingTransfer
+        pending: &PendingTransfer,
     ) -> Result<Option<CertifiedCrossChainTransferOrder>, Error> {
-        info!("Attempting to create certificate with {} signatures", pending.signed_orders.len());
+        info!(
+            "Attempting to create certificate with {} signatures",
+            pending.signed_orders.len()
+        );
 
         // Create a signature aggregator
-        let mut aggregator = CrossChainSignatureAggregator::new_unsafe(
-            pending.order.clone(),
-            &self.committee
-        );
+        let mut aggregator =
+            CrossChainSignatureAggregator::new_unsafe(pending.order.clone(), &self.committee);
 
         // Track whether we've created a certificate
         let mut certificate = None;
@@ -353,15 +378,25 @@ impl Relayer {
         for (name, signed) in &pending.signed_orders {
             match aggregator.append(*name, signed.signature.clone()) {
                 Ok(Some(cert)) => {
-                    info!("Certificate created with signature from {:?}", name);
+                    info!(
+                        "Certificate created with signature from {:?}",
+                        name.base58()
+                    );
                     certificate = Some(cert);
                     break; // Exit the loop once we have a certificate
                 }
                 Ok(None) => {
-                    info!("Added signature from authority {:?} to aggregator", name);
+                    info!(
+                        "Added signature from authority {:?} to aggregator",
+                        name.base58()
+                    );
                 }
                 Err(e) => {
-                    error!("Failed to add signature from authority {:?}: {:?}", name, e);
+                    error!(
+                        "Failed to add signature from authority {:?}: {:?}",
+                        name.base58(),
+                        e
+                    );
                     return Err(e.into());
                 }
             }
@@ -372,14 +407,14 @@ impl Relayer {
     /// Submit a certificate to the destination chain
     async fn submit_to_destination(
         &self,
-        certificate: &CertifiedCrossChainTransferOrder
+        certificate: &CertifiedCrossChainTransferOrder,
     ) -> Result<(), Error> {
         // In a real implementation, this would submit the certificate
         // to the destination chain
 
         info!(
             "Submitting certificate to destination chain: {:?}",
-            certificate.value.transfer.interop_tx_id
+            certificate.value.transfer.interop_tx_id.base58()
         );
 
         Ok(())
@@ -388,18 +423,28 @@ impl Relayer {
     /// Propagate a certificate to all authorities for cross-shard updates
     async fn propagate_to_authorities(
         &self,
-        certificate: &CertifiedCrossChainTransferOrder
+        certificate: &CertifiedCrossChainTransferOrder,
     ) -> Result<(), Error> {
-        info!("Propagating certificate to {} authority shards", self.authority_clients.len());
+        info!(
+            "Propagating certificate to {} authority shards",
+            self.authority_clients.len()
+        );
 
         // Send to all authorities (all shards)
         for (shard_id, clients) in &self.authority_clients {
-            info!("Sending to shard {} with {} authorities", shard_id, clients.len());
+            info!(
+                "Sending to shard {} with {} authorities",
+                shard_id,
+                clients.len()
+            );
             for client in clients {
                 if let Err(e) = client.send_certified_order(certificate).await {
                     error!("Error propagating certificate to authority: {:?}", e);
                 } else {
-                    info!("Certificate propagated successfully to authority in shard {}", shard_id);
+                    info!(
+                        "Certificate propagated successfully to authority in shard {}",
+                        shard_id
+                    );
                 }
             }
         }
@@ -445,8 +490,9 @@ pub async fn run_relayer(opt: RelayerOpt) -> Result<(), Error> {
         &opt.committee,
         opt.source_rpc,
         opt.destination_rpc,
-        polling_interval
-    ).await?;
+        polling_interval,
+    )
+    .await?;
 
     relayer.run().await
 }

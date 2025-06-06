@@ -17,3 +17,4 @@ ed25519-dalek = { version = "2.1.1", features = ["batch", "serde"] }
 serde-name = "0.2.1"
 structopt = "0.3.26"
 sha2 = "0.10.9"
+bs58 = "0.5.1"

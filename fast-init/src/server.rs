@@ -1,19 +1,14 @@
-use fast_core::{
-    base_types::*,
-    authority::*,
-    message::*,
-    committee::Committee,
-    error::*,
-    serialization::*,
-};
 use failure::Error;
-use log::{ error, info };
-use serde::{ Deserialize, Serialize };
+use fast_core::{
+    authority::*, base_types::*, committee::Committee, error::*, message::*, serialization::*,
+};
+use log::{error, info};
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs::File;
-use std::io::{ BufReader };
+use std::io::BufReader;
 use std::net::SocketAddr;
-use std::sync::{ Arc, Mutex };
+use std::sync::{Arc, Mutex};
 use structopt::StructOpt;
 use tokio::sync::mpsc;
 
@@ -75,22 +70,15 @@ pub async fn run_bridge_server(opt: BridgeServerOpt) -> Result<(), Error> {
     let escrow_verifier = DummyEscrowVerifier;
 
     // Create bridge authority state
-    let (authority_state, cross_shard_receiver) = BridgeAuthorityState::new(
-        name,
-        secret,
-        committee,
-        opt.num_shards,
-        escrow_verifier
-    );
+    let (authority_state, cross_shard_receiver) =
+        BridgeAuthorityState::new(name, secret, committee, opt.num_shards, escrow_verifier);
 
     // Create shared authority state
     let shared_authority = Arc::new(Mutex::new(authority_state));
 
     // Create cross-shard handler
-    let cross_shard_task = handle_cross_shard_updates(
-        shared_authority.clone(),
-        cross_shard_receiver
-    );
+    let cross_shard_task =
+        handle_cross_shard_updates(shared_authority.clone(), cross_shard_receiver);
 
     // Create and run shard servers
     let mut server_tasks = Vec::new();
@@ -117,57 +105,62 @@ pub async fn run_bridge_server(opt: BridgeServerOpt) -> Result<(), Error> {
 async fn run_shard_server(
     shard_id: ShardId,
     authority: Arc<Mutex<BridgeAuthorityState<DummyEscrowVerifier>>>,
-    addr: SocketAddr
+    addr: SocketAddr,
 ) -> Result<(), Error> {
     let server = UdpServer::new(addr).await?;
 
     info!("Starting shard server {} on {}", shard_id, addr);
 
-    server.run(move |data| {
-        let authority = authority.clone();
+    server
+        .run(move |data| {
+            let authority = authority.clone();
 
-        match deserialize_message(data) {
-            Ok(BridgeMessage::CrossChainTransferOrder(order)) => {
-                // Handle transfer order
-                let mut state = authority.lock().unwrap();
-                match state.handle_cross_chain_transfer_order(order, shard_id) {
-                    Ok(signed_order) => {
-                        // logs for debug
-                        info!("Received signed order from authority: {:?}", signed_order.authority);
-                        Some(serialize_signed_order(&signed_order))
+            match deserialize_message(data) {
+                Ok(BridgeMessage::CrossChainTransferOrder(order)) => {
+                    // Handle transfer order
+                    let mut state = authority.lock().unwrap();
+                    match state.handle_cross_chain_transfer_order(order, shard_id) {
+                        Ok(signed_order) => {
+                            // logs for debug
+                            info!(
+                                "Received signed order from authority: {:?}",
+                                signed_order.authority.base58()
+                            );
+                            Some(serialize_signed_order(&signed_order))
+                        }
+                        Err(e) => Some(serialize_error(&e)),
                     }
-                    Err(e) => Some(serialize_error(&e)),
+                }
+                Ok(BridgeMessage::CrossShardUpdate(update)) => {
+                    // Handle cross-shard update
+                    let mut state = authority.lock().unwrap();
+                    match state.handle_cross_shard_update(update) {
+                        Ok(_) => {
+                            info!("Handled cross-shard update for shard {}", shard_id);
+                            None
+                        } // No response needed
+                        Err(e) => Some(serialize_error(&e)),
+                    }
+                }
+                Ok(BridgeMessage::CertifiedCrossChainTransferOrder(cert)) => {
+                    // Handle certified transfer order (propagate to all shards)
+                    let state = authority.lock().unwrap();
+                    match state.propagate_certified_transfer(cert) {
+                        Ok(_) => None, // No response needed
+                        Err(e) => Some(serialize_error(&e)),
+                    }
+                }
+                Ok(_) => {
+                    // Unexpected message type
+                    None
+                }
+                Err(_) => {
+                    // Deserialization error
+                    None
                 }
             }
-            Ok(BridgeMessage::CrossShardUpdate(update)) => {
-                // Handle cross-shard update
-                let mut state = authority.lock().unwrap();
-                match state.handle_cross_shard_update(update) {
-                    Ok(_) => {
-                        info!("Handled cross-shard update for shard {}", shard_id);
-                        None
-                    } // No response needed
-                    Err(e) => Some(serialize_error(&e)),
-                }
-            }
-            Ok(BridgeMessage::CertifiedCrossChainTransferOrder(cert)) => {
-                // Handle certified transfer order (propagate to all shards)
-                let state = authority.lock().unwrap();
-                match state.propagate_certified_transfer(cert) {
-                    Ok(_) => None, // No response needed
-                    Err(e) => Some(serialize_error(&e)),
-                }
-            }
-            Ok(_) => {
-                // Unexpected message type
-                None
-            }
-            Err(_) => {
-                // Deserialization error
-                None
-            }
-        }
-    }).await?;
+        })
+        .await?;
 
     Ok(())
 }
@@ -175,7 +168,7 @@ async fn run_shard_server(
 /// Handle cross-shard updates
 async fn handle_cross_shard_updates(
     authority: Arc<Mutex<BridgeAuthorityState<DummyEscrowVerifier>>>,
-    mut receiver: mpsc::UnboundedReceiver<CrossShardCrossChainUpdate>
+    mut receiver: mpsc::UnboundedReceiver<CrossShardCrossChainUpdate>,
 ) -> Result<(), Error> {
     while let Some(update) = receiver.recv().await {
         let mut state = authority.lock().unwrap();
@@ -206,12 +199,10 @@ fn load_committee(path: &str) -> Result<Committee, Error> {
 
     if let Some(authorities) = config.get("authorities").and_then(|v| v.as_array()) {
         for authority in authorities {
-            if
-                let (Some(name), Some(weight)) = (
-                    authority.get("name").and_then(|v| v.as_str()),
-                    authority.get("weight").and_then(|v| v.as_u64()),
-                )
-            {
+            if let (Some(name), Some(weight)) = (
+                authority.get("name").and_then(|v| v.as_str()),
+                authority.get("weight").and_then(|v| v.as_u64()),
+            ) {
                 let name = decode_authority_name(name)?;
                 voting_rights.insert(name.into(), weight as usize);
             }
@@ -223,7 +214,8 @@ fn load_committee(path: &str) -> Result<Committee, Error> {
 
 /// Load secret key from string or file
 fn load_secret_key(key_or_path: &str) -> Result<KeyPair, Error> {
-    let secret_key_str = if key_or_path.contains('/') && std::path::Path::new(key_or_path).exists() {
+    let secret_key_str = if key_or_path.contains('/') && std::path::Path::new(key_or_path).exists()
+    {
         // This looks like a file path, try to read from file
         let file = File::open(key_or_path)?;
         let reader = BufReader::new(file);

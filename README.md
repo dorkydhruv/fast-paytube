@@ -42,7 +42,7 @@ run servers -
 
 ```bash
 chmod +x ./scipts/start_auth.sh
-./scipts/start_auth.sh
+./scripts/start_auth.sh
 ```
 
 run relayer -
