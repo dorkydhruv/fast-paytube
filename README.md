@@ -24,6 +24,8 @@ Fast-PayTube provides a unified interoperability layer for SVM chains, currently
 - **Horizontal scaling** through sharded architecture
 - **SVM-native design** optimized for the ecosystem
 
+[Ceritificate Generation output](/docs/certificate-gen.png)
+
 ## Architecture
 
 ```mermaid
@@ -65,32 +67,7 @@ sequenceDiagram
 - **Certificate System**: Cryptographic proofs enabling trustless verification
 - **Relayer Network**: Decentralized transaction submission layer
 
-## Key Features
-
-### 🔗 SVM-Native Interoperability
-
-Purpose-built for the SVM ecosystem, optimized for Solana L1, L2s, and rollups with native program integration.
-
-### ⚡ FastPay-Powered Consensus
-
-Based on proven FastPay research with Byzantine Fault Tolerant consensus, ensuring security even with 1/3 malicious authorities.
-
-### 🧩 Sharded Architecture
-
-Deterministic sharding by sender address enables horizontal scaling while maintaining decentralization and security.
-
-### 🛡️ Cryptographic Certificates
-
-Ed25519 threshold signatures create unforgeable transfer certificates that can be verified on any SVM chain.
-
-### 🚀 Performance
-
-- Sub-second signature verification
-- Thousands of transfers per second per shard
-- Linear scalability through additional shards
-
 ## Getting Started
-
 
 1. Clone the repository:
 
@@ -147,6 +124,11 @@ cargo run -- server --config ./bridge_config/authority_0.json --port 8000
 
 ```bash
 cargo run -- relayer --committee ./bridge_config/committee.json --source-rpc <SOURCE_RPC> --destination-rpc <DEST_RPC>
+```
+
+#### Cleanup
+```bash
+pkill fast-init
 ```
 
 ### Environment Variables
